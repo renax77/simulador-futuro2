@@ -1,0 +1,917 @@
+<!DOCTYPE html>
+<html lang="es" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CHRONOS // Simulador de Proyección de Escenarios Futuros</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;700&family=Inter:wght@300;400;500;600;700;800&family=Orbitron:wght@500;700;900&display=swap" rel="stylesheet">
+
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                        tech: ['Orbitron', 'sans-serif'],
+                    },
+                    colors: {
+                        cyber: {
+                            bg: '#0f172a',
+                            card: 'rgba(15, 23, 42, 0.85)',
+                            darker: '#090d16',
+                            border: '#1e293b',
+                            cyan: '#06b6d4',
+                            glow: '#22d3ee',
+                            purple: '#8b5cf6',
+                            blue: '#3b82f6',
+                            pink: '#ec4899',
+                            emerald: '#10b981',
+                            rose: '#f43f5e'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body {
+            background-color: #0f172a;
+            color: #f8fafc;
+            font-family: 'Inter', sans-serif;
+            overflow-x: hidden;
+        }
+
+        /* Sci-Fi Canvas Background */
+        #bg-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        /* HUD Glass Effect */
+        .hud-card {
+            background: linear-gradient(135deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.9) 100%);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(6, 182, 212, 0.2);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+
+        .hud-card-glow {
+            border: 1px solid rgba(6, 182, 212, 0.5);
+            box-shadow: 0 0 20px rgba(6, 182, 212, 0.25), inset 0 0 15px rgba(6, 182, 212, 0.05);
+        }
+
+        .neon-text-cyan {
+            text-shadow: 0 0 10px rgba(6, 182, 212, 0.7), 0 0 20px rgba(6, 182, 212, 0.3);
+        }
+
+        .neon-text-purple {
+            text-shadow: 0 0 10px rgba(139, 92, 246, 0.7), 0 0 20px rgba(139, 92, 246, 0.3);
+        }
+
+        .neon-btn {
+            background: linear-gradient(90deg, #06b6d4 0%, #3b82f6 100%);
+            box-shadow: 0 0 20px rgba(6, 182, 212, 0.4);
+            transition: all 0.3s ease;
+        }
+        .neon-btn:hover {
+            box-shadow: 0 0 30px rgba(6, 182, 212, 0.7);
+            transform: translateY(-1px);
+        }
+
+        /* Scanline Overlay */
+        .scanlines {
+            background: linear-gradient(
+                rgba(18, 16, 16, 0) 50%, 
+                rgba(0, 0, 0, 0.25) 50%
+            );
+            background-size: 100% 4px;
+            pointer-events: none;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #1e293b;
+            border-radius: 3px;
+            border: 1px solid rgba(6, 182, 212, 0.3);
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #06b6d4;
+        }
+
+        /* Slider Custom Styling */
+        input[type=range] {
+            -webkit-appearance: none;
+            background: #1e293b;
+            height: 8px;
+            border-radius: 4px;
+            border: 1px solid rgba(6, 182, 212, 0.3);
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 20px;
+            width: 20px;
+            border-radius: 50%;
+            background: #06b6d4;
+            box-shadow: 0 0 10px #06b6d4;
+            cursor: pointer;
+            border: 2px solid #ffffff;
+        }
+
+        @keyframes pulse-scan {
+            0% { top: 0%; }
+            100% { top: 100%; }
+        }
+        .scanner-line {
+            position: absolute;
+            width: 100%;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #06b6d4, transparent);
+            animation: pulse-scan 2.5s infinite linear;
+        }
+
+        @media print {
+            body { background: white !important; color: black !important; }
+            .no-print { display: none !important; }
+            .print-only { display: block !important; }
+            .hud-card { background: none !important; border: 1px solid #ccc !important; color: black !important; box-shadow: none !important; }
+            #bg-canvas { display: none !important; }
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between relative selection:bg-cyber-cyan selection:text-black">
+
+    <!-- Canvas Background -->
+    <canvas id="bg-canvas"></canvas>
+
+    <!-- Scanline Filter -->
+    <div class="fixed inset-0 scanlines z-10 opacity-30 pointer-events-none"></div>
+
+    <!-- Top Navigation Header -->
+    <header class="relative z-20 border-b border-slate-800 bg-cyber-bg/80 backdrop-blur-md sticky top-0 px-4 py-3 no-print">
+        <div class="max-w-7xl mx-auto flex flex-wrap justify-between items-center gap-4">
+            
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-lg bg-slate-900 border border-cyber-cyan/40 flex items-center justify-center text-cyber-cyan shadow-lg shadow-cyber-cyan/20">
+                    <i data-lucide="cpu" class="w-6 h-6"></i>
+                </div>
+                <div>
+                    <h1 class="font-tech text-xl font-bold tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-cyber-cyan via-white to-cyber-purple">
+                        CHRONOS <span class="text-xs font-mono text-cyber-cyan px-2 py-0.5 rounded border border-cyber-cyan/30 bg-cyber-cyan/10">v3.8</span>
+                    </h1>
+                    <p class="text-[11px] text-slate-400 font-mono tracking-tight">MOTOR DE PROYECCIÓN TEMPORAL & ANÁLISIS DE ESCENARIOS</p>
+                </div>
+            </div>
+
+            <!-- Top Actions -->
+            <div class="flex items-center space-x-3 text-xs font-mono">
+                <!-- API Config Modal Trigger -->
+                <button onclick="toggleModal('modal-api')" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 flex items-center gap-2 transition hover:border-cyber-cyan">
+                    <i data-lucide="key" class="w-4 h-4 text-cyber-cyan"></i>
+                    <span id="api-status-badge" class="hidden sm:inline">Configurar API LLM (Opcional)</span>
+                </button>
+
+                <!-- Sound Toggle -->
+                <button onclick="toggleSound()" id="btn-sound" class="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition" title="Alternar Efectos Sonoros">
+                    <i data-lucide="volume-2" id="sound-icon" class="w-4 h-4 text-cyber-cyan"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Dashboard Body -->
+    <main class="relative z-20 max-w-7xl mx-auto w-full px-4 py-6 flex-grow space-y-6">
+
+        <!-- SECTION 1: SIMULATION FORM INPUT (Top) -->
+        <section id="section-form" class="hud-card rounded-2xl p-6 relative overflow-hidden transition-all duration-500">
+            <div class="scanner-line"></div>
+
+            <div class="flex items-center justify-between border-b border-slate-800 pb-4 mb-5">
+                <div class="flex items-center space-x-2">
+                    <i data-lucide="terminal" class="w-5 h-5 text-cyber-cyan"></i>
+                    <h2 class="font-tech text-sm font-bold tracking-wider text-white uppercase">1. Parámetros de Simulación Temporal</h2>
+                </div>
+                <span class="text-[10px] font-mono text-cyber-cyan bg-cyber-cyan/10 px-2.5 py-1 rounded-full border border-cyber-cyan/30">
+                    SISTEMA LISTO PARA INGESTA DE CRITERIO
+                </span>
+            </div>
+
+            <!-- Main Form Grid -->
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                
+                <!-- Left: Textarea & Prompt Chips (8 Cols) -->
+                <div class="lg:col-span-8 space-y-4">
+                    <label for="input-criterion" class="block text-xs font-mono text-slate-300 flex justify-between">
+                        <span>CRITERIO O HIPÓTESIS LIBRE DE SIMULACIÓN:</span>
+                        <span class="text-slate-500">Escribe cualquier escenario libre</span>
+                    </label>
+
+                    <div class="relative">
+                        <textarea id="input-criterion" rows="3" 
+                            placeholder="Ejemplo: ¿Qué ocurre si la Inteligencia Artificial reemplaza el 80% de los empleos administrativos en 2030?" 
+                            class="w-full bg-slate-950/80 border border-slate-700 focus:border-cyber-cyan rounded-xl p-3.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-cyber-cyan font-sans transition"></textarea>
+                        <i data-lucide="sparkles" class="w-4 h-4 text-cyber-cyan absolute right-3 bottom-3 opacity-50"></i>
+                    </div>
+
+                    <!-- Quick Prompt Chips -->
+                    <div class="space-y-1.5">
+                        <span class="text-[11px] font-mono text-slate-400">Escenarios de prueba rápida:</span>
+                        <div class="flex flex-wrap gap-2">
+                            <button onclick="setPrompt('¿Qué sucede si la IA reemplaza el 80% de los trabajos de oficina?')" class="text-xs bg-slate-800/80 hover:bg-cyber-cyan/20 text-slate-300 hover:text-cyber-cyan px-2.5 py-1 rounded-lg border border-slate-700 transition font-mono">
+                                🤖 80% Empleos reemplazados por IA
+                            </button>
+                            <button onclick="setPrompt('¿Qué ocurre si se prohíben totalmente los teléfonos inteligentes en las escuelas?')" class="text-xs bg-slate-800/80 hover:bg-cyber-cyan/20 text-slate-300 hover:text-cyber-cyan px-2.5 py-1 rounded-lg border border-slate-700 transition font-mono">
+                                📱 Prohibición de smartphones en colegios
+                            </button>
+                            <button onclick="setPrompt('¿Qué pasa si una persona no consume agua durante 3 días consecutivos?')" class="text-xs bg-slate-800/80 hover:bg-cyber-cyan/20 text-slate-300 hover:text-cyber-cyan px-2.5 py-1 rounded-lg border border-slate-700 transition font-mono">
+                                💧 Sin beber agua por 3 días
+                            </button>
+                            <button onclick="setPrompt('¿Qué pasa si se implementa una jornada laboral global de 3 días a la semana?')" class="text-xs bg-slate-800/80 hover:bg-cyber-cyan/20 text-slate-300 hover:text-cyber-cyan px-2.5 py-1 rounded-lg border border-slate-700 transition font-mono">
+                                ⏰ Jornada laboral de 3 días
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right: Time Horizon Slider & Start Button (4 Cols) -->
+                <div class="lg:col-span-4 flex flex-col justify-between space-y-4 bg-slate-900/50 p-4 rounded-xl border border-slate-800">
+                    
+                    <div class="space-y-3">
+                        <div class="flex justify-between items-center text-xs font-mono">
+                            <label for="input-years" class="text-slate-300">HORIZONTE TEMPORAL:</label>
+                            <span id="years-display" class="font-bold text-cyber-cyan text-base font-tech">10 AÑOS</span>
+                        </div>
+
+                        <input type="range" id="input-years" min="1" max="50" value="10" oninput="updateYearsDisplay(this.value)" class="w-full">
+
+                        <div class="flex justify-between text-[10px] font-mono text-slate-500">
+                            <span>1 Año</span>
+                            <span>10A</span>
+                            <span>25A</span>
+                            <span>50 Años</span>
+                        </div>
+                    </div>
+
+                    <!-- Action Button -->
+                    <button id="btn-start" onclick="initiateSimulation()" class="w-full py-3.5 px-4 neon-btn text-slate-950 font-tech font-bold text-xs tracking-widest uppercase rounded-xl flex items-center justify-center gap-2 group">
+                        <i data-lucide="play" class="w-4 h-4 fill-current group-hover:scale-110 transition"></i>
+                        <span>INICIAR SIMULACIÓN FUTURISTA</span>
+                    </button>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- SECTION 2: LOADING / COMPUTING HUD (Hidden by default) -->
+        <section id="section-loading" class="hidden hud-card rounded-2xl p-12 text-center space-y-6 relative overflow-hidden">
+            <div class="scanner-line"></div>
+            
+            <div class="inline-flex relative">
+                <div class="w-20 h-20 rounded-full border-4 border-slate-800 border-t-cyber-cyan animate-spin"></div>
+                <div class="absolute inset-0 flex items-center justify-center text-cyber-cyan">
+                    <i data-lucide="cpu" class="w-8 h-8 animate-pulse"></i>
+                </div>
+            </div>
+
+            <div class="space-y-2 max-w-md mx-auto">
+                <h3 class="font-tech text-lg font-bold text-white tracking-widest">CALCULANDO LÍNEA TEMPORAL</h3>
+                <p id="loading-status-text" class="text-xs font-mono text-cyber-cyan animate-pulse">
+                    Analizando variables socioeconómicas y patrones de impacto...
+                </p>
+                <!-- Loading Bar -->
+                <div class="w-full bg-slate-900 h-2 rounded-full overflow-hidden border border-slate-800">
+                    <div id="loading-bar-fill" class="bg-gradient-to-r from-cyber-cyan to-cyber-purple h-full w-0 transition-all duration-300"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- SECTION 3: SIMULATION RESULTS DASHBOARD (Hidden by default) -->
+        <section id="section-results" class="hidden space-y-6">
+            
+            <!-- Controls Bar -->
+            <div class="hud-card rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4">
+                
+                <!-- Playback Controls -->
+                <div class="flex items-center space-x-2">
+                    <button onclick="toggleAutoplay()" id="btn-play" class="px-3.5 py-2 rounded-xl bg-cyber-cyan/20 hover:bg-cyber-cyan/30 text-cyber-cyan border border-cyber-cyan/40 text-xs font-mono font-semibold flex items-center gap-1.5 transition">
+                        <i data-lucide="play" id="icon-play" class="w-4 h-4 fill-current"></i>
+                        <span id="text-play">REPRODUCIR</span>
+                    </button>
+
+                    <button onclick="prevStep()" class="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs transition" title="Anterior Hito">
+                        <i data-lucide="chevron-left" class="w-4 h-4"></i>
+                    </button>
+
+                    <button onclick="nextStep()" class="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs transition" title="Siguiente Hito">
+                        <i data-lucide="chevron-right" class="w-4 h-4"></i>
+                    </button>
+
+                    <!-- Speed Selector -->
+                    <select id="select-speed" onchange="changeSpeed(this.value)" class="bg-slate-900 text-slate-300 border border-slate-700 rounded-xl px-2 py-1.5 text-xs font-mono focus:outline-none">
+                        <option value="2500">Velocidad: 1x</option>
+                        <option value="1500">Velocidad: 1.5x</option>
+                        <option value="800">Velocidad: 2x</option>
+                    </select>
+                </div>
+
+                <!-- Active Scenario Badge -->
+                <div class="text-center sm:text-right">
+                    <span class="text-[10px] font-mono text-slate-400 block">ESCENARIO EVALUADO:</span>
+                    <span id="active-prompt-title" class="text-xs font-bold text-cyber-glow font-mono truncate max-w-xs inline-block">--</span>
+                </div>
+
+                <!-- Reset & Export Buttons -->
+                <div class="flex items-center space-x-2">
+                    <button onclick="window.print()" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-mono flex items-center gap-1.5 transition">
+                        <i data-lucide="printer" class="w-3.5 h-3.5 text-cyber-cyan"></i> Exportar
+                    </button>
+
+                    <button onclick="resetSimulation()" class="px-3 py-2 rounded-xl bg-cyber-rose/20 hover:bg-cyber-rose/30 text-cyber-rose border border-cyber-rose/40 text-xs font-mono font-bold flex items-center gap-1.5 transition">
+                        <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i> Nuevo Escenario
+                    </button>
+                </div>
+            </div>
+
+            <!-- Timeline Dots Bar -->
+            <div class="hud-card rounded-2xl p-4 overflow-x-auto">
+                <div id="timeline-dots-container" class="flex items-center justify-between min-w-[600px] relative px-4">
+                    <!-- Dynamic timeline dots rendered by JS -->
+                </div>
+            </div>
+
+            <!-- Active Milestone Feature Card -->
+            <div id="milestone-card" class="hud-card hud-card-glow rounded-2xl p-6 lg:p-8 space-y-6 relative transition-all duration-300">
+                
+                <!-- Card Header -->
+                <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-4">
+                    <div class="flex items-center space-x-3">
+                        <span id="card-year-badge" class="font-tech text-xl font-bold text-black bg-cyber-cyan px-3 py-1 rounded-lg shadow-lg shadow-cyber-cyan/30">
+                            AÑO 1
+                        </span>
+                        <div>
+                            <span id="card-timeline-status" class="text-[10px] font-mono text-slate-400 uppercase tracking-widest block">FASE DE IMPACTO TEMPRANO</span>
+                            <h3 id="card-event-title" class="text-lg md:text-xl font-bold text-white font-sans">Título del Evento Principal</h3>
+                        </div>
+                    </div>
+
+                    <!-- Stability Level Badge -->
+                    <div class="flex items-center space-x-2 bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800">
+                        <span class="text-[10px] font-mono text-slate-400">ESTABILIDAD GLOBAL:</span>
+                        <span id="card-stability-badge" class="text-xs font-mono font-bold text-cyber-emerald">95% (ALTA)</span>
+                    </div>
+                </div>
+
+                <!-- Event Detailed Narrative -->
+                <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                    
+                    <!-- Explanation Text (7 Cols) -->
+                    <div class="lg:col-span-7 space-y-4">
+                        <div>
+                            <h4 class="text-xs font-mono text-cyber-cyan uppercase tracking-wider mb-1 flex items-center gap-1">
+                                <i data-lucide="file-text" class="w-3.5 h-3.5"></i> Análisis de Ramificación & Consecuencias:
+                            </h4>
+                            <p id="card-description" class="text-sm text-slate-200 leading-relaxed font-sans bg-slate-950/50 p-4 rounded-xl border border-slate-800/80">
+                                Descripción detallada de las consecuencias directas e indirectas del criterio seleccionado.
+                            </p>
+                        </div>
+
+                        <!-- Key Highlights Bullets -->
+                        <div class="space-y-1.5">
+                            <span class="text-xs font-mono text-slate-400">Hitos Secundarios Detectados:</span>
+                            <ul id="card-highlights" class="space-y-1 text-xs text-slate-300 font-sans list-disc list-inside">
+                                <!-- Rendered dynamically -->
+                            </ul>
+                        </div>
+                    </div>
+
+                    <!-- Impact Gauges (5 Cols) -->
+                    <div class="lg:col-span-5 bg-slate-950/70 p-5 rounded-xl border border-slate-800 space-y-4">
+                        <h4 class="text-xs font-mono text-cyber-purple uppercase tracking-wider flex items-center gap-1">
+                            <i data-lucide="activity" class="w-3.5 h-3.5"></i> Indicadores de Impacto Sistémico
+                        </h4>
+
+                        <!-- Indicator 1: Social Impact -->
+                        <div class="space-y-1">
+                            <div class="flex justify-between text-xs font-mono">
+                                <span class="text-slate-300">Impacto Social / Humano:</span>
+                                <span id="val-social" class="text-cyber-cyan font-bold">0%</span>
+                            </div>
+                            <div class="w-full bg-slate-900 h-2.5 rounded-full overflow-hidden p-0.5 border border-slate-800">
+                                <div id="bar-social" class="bg-cyber-cyan h-full rounded-full transition-all duration-700" style="width: 0%"></div>
+                            </div>
+                        </div>
+
+                        <!-- Indicator 2: Economic Impact -->
+                        <div class="space-y-1">
+                            <div class="flex justify-between text-xs font-mono">
+                                <span class="text-slate-300">Impacto Económico / Productivo:</span>
+                                <span id="val-economy" class="text-cyber-purple font-bold">0%</span>
+                            </div>
+                            <div class="w-full bg-slate-900 h-2.5 rounded-full overflow-hidden p-0.5 border border-slate-800">
+                                <div id="bar-economy" class="bg-cyber-purple h-full rounded-full transition-all duration-700" style="width: 0%"></div>
+                            </div>
+                        </div>
+
+                        <!-- Indicator 3: Global Risk Level -->
+                        <div class="space-y-1">
+                            <div class="flex justify-between text-xs font-mono">
+                                <span class="text-slate-300">Nivel de Riesgo / Vulnerabilidad:</span>
+                                <span id="val-risk" class="text-cyber-rose font-bold">0%</span>
+                            </div>
+                            <div class="w-full bg-slate-900 h-2.5 rounded-full overflow-hidden p-0.5 border border-slate-800">
+                                <div id="bar-risk" class="bg-cyber-rose h-full rounded-full transition-all duration-700" style="width: 0%"></div>
+                            </div>
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </section>
+
+    </main>
+
+    <!-- Modal: API Settings (Optional for OpenAI/Gemini/Claude) -->
+    <div id="modal-api" class="fixed inset-0 bg-black/80 backdrop-blur-md z-50 hidden flex items-center justify-center p-4">
+        <div class="hud-card rounded-2xl max-w-md w-full p-6 border border-cyber-cyan/40 space-y-4">
+            <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+                <div class="flex items-center space-x-2 text-cyber-cyan">
+                    <i data-lucide="key" class="w-5 h-5"></i>
+                    <h3 class="font-tech font-bold text-sm text-white">Conexión API LLM (Opcional)</h3>
+                </div>
+                <button onclick="toggleModal('modal-api')" class="text-slate-400 hover:text-white">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <p class="text-xs text-slate-300 leading-relaxed">
+                Chronos incluye un motor heurístico interno muy veloz. Si deseas generar proyecciones con un modelo de IA en la nube, ingresa tu API Key a continuación:
+            </p>
+
+            <div class="space-y-3 font-mono text-xs">
+                <div>
+                    <label class="block text-slate-400 mb-1">Proveedor API:</label>
+                    <select id="api-provider" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-white">
+                        <option value="none">Ninguno (Usar Motor Interno Heurístico)</option>
+                        <option value="openai">OpenAI (GPT-4o / GPT-3.5)</option>
+                        <option value="gemini">Google Gemini API</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-slate-400 mb-1">API Key:</label>
+                    <input type="password" id="api-key-input" placeholder="sk-..." class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-white focus:border-cyber-cyan focus:outline-none">
+                </div>
+            </div>
+
+            <div class="pt-2 flex justify-end gap-2 font-mono text-xs">
+                <button onclick="toggleModal('modal-api')" class="px-3 py-1.5 bg-slate-800 text-slate-300 rounded-lg hover:bg-slate-700">Cancelar</button>
+                <button onclick="saveApiSettings()" class="px-4 py-1.5 bg-cyber-cyan text-black font-bold rounded-lg hover:bg-cyber-glow">Guardar Configuración</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="relative z-20 border-t border-slate-800/80 bg-slate-950/80 py-4 px-4 text-center text-[11px] font-mono text-slate-500 no-print">
+        <p>CHRONOS SIMULATOR Engine © 2026 - Proyección Futura de Escenarios Complejos.</p>
+    </footer>
+
+    <!-- ENGINE SCRIPT -->
+    <script>
+        // Canvas Particle Background
+        const canvas = document.getElementById('bg-canvas');
+        const ctx = canvas.getContext('2d');
+        let particles = [];
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+            reset() {
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * canvas.height;
+                this.size = Math.random() * 1.5 + 0.5;
+                this.speedX = (Math.random() - 0.5) * 0.4;
+                this.speedY = (Math.random() - 0.5) * 0.4;
+                this.opacity = Math.random() * 0.5 + 0.1;
+            }
+            update() {
+                this.x += this.speedX;
+                this.y += this.speedY;
+                if (this.x < 0 || this.x > canvas.width || this.y < 0 || this.y > canvas.height) {
+                    this.reset();
+                }
+            }
+            draw() {
+                ctx.fillStyle = `rgba(6, 182, 212, ${this.opacity})`;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        for (let i = 0; i < 60; i++) {
+            particles.push(new Particle());
+        }
+
+        function animateCanvas() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+            requestAnimationFrame(animateCanvas);
+        }
+        animateCanvas();
+
+        // Global Application State
+        let currentMilestones = [];
+        let currentStepIndex = 0;
+        let isPlaying = false;
+        let playInterval = null;
+        let playSpeed = 2500;
+        let isSoundEnabled = true;
+
+        // Audio Effects (Web Audio API)
+        let audioCtx = null;
+        function playSound(type) {
+            if (!isSoundEnabled) return;
+            try {
+                if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                const now = audioCtx.currentTime;
+
+                if (type === 'beep') {
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(600, now);
+                    gain.gain.setValueAtTime(0.05, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+                    osc.start(now);
+                    osc.stop(now + 0.08);
+                } else if (type === 'start') {
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(200, now);
+                    osc.frequency.exponentialRampToValueAtTime(800, now + 0.3);
+                    gain.gain.setValueAtTime(0.1, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+                    osc.start(now);
+                    osc.stop(now + 0.3);
+                }
+            } catch (e) {
+                console.log("Audio non-interactive yet", e);
+            }
+        }
+
+        function toggleSound() {
+            isSoundEnabled = !isSoundEnabled;
+            const icon = document.getElementById('sound-icon');
+            icon.setAttribute('data-lucide', isSoundEnabled ? 'volume-2' : 'volume-x');
+            lucide.createIcons();
+        }
+
+        // DOM Helper Functions
+        function updateYearsDisplay(val) {
+            document.getElementById('years-display').innerText = `${val} AÑOS`;
+        }
+
+        function setPrompt(text) {
+            playSound('beep');
+            document.getElementById('input-criterion').value = text;
+        }
+
+        function toggleModal(id) {
+            playSound('beep');
+            document.getElementById(id).classList.toggle('hidden');
+        }
+
+        function saveApiSettings() {
+            playSound('beep');
+            const provider = document.getElementById('api-provider').value;
+            const badge = document.getElementById('api-status-badge');
+            if (provider !== 'none') {
+                badge.innerText = `API: ${provider.toUpperCase()} (Activa)`;
+            } else {
+                badge.innerText = "Configurar API LLM (Opcional)";
+            }
+            toggleModal('modal-api');
+        }
+
+        // Smart Internal Heuristic Simulation Engine
+        function generateHeuristicSimulation(criterion, totalYears) {
+            const text = criterion.toLowerCase();
+
+            // Detect Category Keywords
+            const isTech = text.includes('ia') || text.includes('inteligencia artificial') || text.includes('robot') || text.includes('tecnología') || text.includes('automatiz');
+            const isEdu = text.includes('escuela') || text.includes('colegio') || text.includes('estudiante') || text.includes('celular') || text.includes('smartphone') || text.includes('educación');
+            const isHealth = text.includes('agua') || text.includes('salud') || text.includes('cuerpo') || text.includes('médico') || text.includes('enfermedad') || text.includes('beber');
+            const isEcon = text.includes('trabajo') || text.includes('empleo') || text.includes('jornada') || text.includes('dinero') || text.includes('empresa');
+
+            // Generate Step Milestones based on Total Years chosen
+            const stepCount = totalYears <= 5 ? totalYears : 5; // 5 major temporal milestones
+            const intervals = [];
+            for (let i = 1; i <= stepCount; i++) {
+                intervals.push(Math.round((totalYears / stepCount) * i));
+            }
+
+            const milestones = [];
+
+            intervals.forEach((year, idx) => {
+                let eventTitle = "";
+                let description = "";
+                let highlights = [];
+                let social = 50;
+                let economy = 50;
+                let risk = 30;
+
+                const progressRatio = (idx + 1) / stepCount;
+
+                if (isTech || isEcon) {
+                    if (idx === 0) {
+                        eventTitle = `Fase 1 (Año ${year}): Disrupción Inicial y Reestructuración Mercado`;
+                        description = `Transición acelerada. Las organizaciones redefinen sus flujos de trabajo ante el nuevo paradigma. Surge incertidumbre laboral en sectores tradicionales.`;
+                        highlights = ["Adaptación masiva de nuevos software", "Aumento inicial del desempleo temporal en mandos medios", "Debates parlamentarios sobre regulación urgente"];
+                        social = 40; economy = 65; risk = 45;
+                    } else if (idx === 2) {
+                        eventTitle = `Fase 2 (Año ${year}): Estabilización de Nuevos Modelos Productivos`;
+                        description = `Creación de nuevas industrias antes inexistentes. La productividad global se eleva, aunque persiste la brecha de reconversión de habilidades.`;
+                        highlights = ["Nuevos títulos universitarios y certificaciones tildadas de prioritarias", "Automatización del 60% de tareas repetitivas", "Surgimiento de renta básica o subsidios de reconversión"];
+                        social = 55; economy = 80; risk = 50;
+                    } else {
+                        eventTitle = `Fase Final (Año ${year}): Equilibrio Madurado de la Nueva Era`;
+                        description = `La sociedad ha integrado totalmente el criterio en su cultura diaria. La economía opera bajo una estructura de eficiencia sin precedentes.`;
+                        highlights = ["Estandarización de normativas éticas globales", "Consolidación de un nuevo balance vida-trabajo", "Optimización de recursos energéticos e industriales"];
+                        social = 75; economy = 90; risk = 25;
+                    }
+                } else if (isEdu) {
+                    if (idx === 0) {
+                        eventTitle = `Fase 1 (Año ${year}): Fricción Cultural y Ajuste Escolar`;
+                        description = `Resistencia inicial y periodo de adaptación por parte de estudiantes y docentes. Cambios notables en el clima de aula.`;
+                        highlights = ["Incremento de la atención directa en salones", "Protestas juveniles aisladas solicitando flexibilidad", "Reevaluación de métodos pedagógicos tradicionales"];
+                        social = 60; economy = 50; risk = 25;
+                    } else {
+                        eventTitle = `Fase 2 (Año ${year}): Consolidación Hábitos y Pensamiento Crítico`;
+                        description = `Mejora sustancial en índices de retención de lectura, interacción cara a cara y reducción del estrés por hiperconectividad.`;
+                        highlights = ["Aumento del 35% en rendimiento en pruebas de comprensión", "Fortalecimiento de la salud mental escolar", "Creación de zonas de desconexión comunitaria"];
+                        social = 85; economy = 60; risk = 15;
+                    }
+                } else if (isHealth) {
+                    // Fast biological or crisis scale
+                    if (idx === 0) {
+                        eventTitle = `Hito Inmediato (Año/Día ${year}): Inicio de Deshidratación y Fatiga Clave`;
+                        description = `Afectación crítica en sistemas corporales o comunitarios. Pérdida acelerada de capacidades de rendimiento.`;
+                        highlights = ["Baja drástica de energía y concentración", "Activación de mecanismos de reserva biológicos", "Señales de alerta crítica médica"];
+                        social = 20; economy = 30; risk = 80;
+                    } else {
+                        eventTitle = `Hito Avanzado (Año/Día ${year}): Colapso Severo o Reorganización de Emergencia`;
+                        description = `Consecuencias estructurales irreversibles si no hay intervención de auxilio inmediata.`;
+                        highlights = ["Fallo multisistémico o cese de operaciones", "Requerimiento de intervención intensiva externa", "Punto de no retorno en la línea proyectada"];
+                        social = 5; economy = 10; risk = 98;
+                    }
+                } else {
+                    // Generic Scenario
+                    eventTitle = `Hito Temporal (${year} Años): Ramificación Proyectada Escenario`;
+                    description = `Evolución progresiva de la hipótesis ingresada. Las variables sociales y económicas responden adaptativamente.`;
+                    highlights = ["Reorganización de pautas de comportamiento", "Ajuste en presupuestos y recursos disponibles", "Nuevo consenso normativo en la comunidad"];
+                    social = Math.round(50 + progressRatio * 20);
+                    economy = Math.round(50 + progressRatio * 15);
+                    risk = Math.round(40 - progressRatio * 15);
+                }
+
+                milestones.push({
+                    year: year,
+                    title: eventTitle,
+                    description: description,
+                    highlights: highlights,
+                    social: social,
+                    economy: economy,
+                    risk: risk,
+                    stability: Math.max(5, 100 - risk)
+                });
+            });
+
+            return milestones;
+        }
+
+        // Initiate Simulation Orchestrator
+        function initiateSimulation() {
+            const criterion = document.getElementById('input-criterion').value.trim();
+            const totalYears = parseInt(document.getElementById('input-years').value);
+
+            if (!criterion) {
+                alert("Por favor ingresa un criterio o pregunta de simulación.");
+                return;
+            }
+
+            playSound('start');
+
+            // Hide Form & Results, Show Loading HUD
+            document.getElementById('section-form').classList.add('opacity-40', 'pointer-events-none');
+            document.getElementById('section-results').classList.add('hidden');
+            document.getElementById('section-loading').classList.remove('hidden');
+
+            // Simulated HUD Computing Steps Animation
+            const statusText = document.getElementById('loading-status-text');
+            const fillBar = document.getElementById('loading-bar-fill');
+
+            const steps = [
+                "Ingestando criterio de usuario...",
+                "Analizando patrones léxicos y variables clave...",
+                "Proyectando curvas de impacto socioeconómico...",
+                "Sincronizando hitos en línea temporal...",
+                "Generando informe de estabilidad..."
+            ];
+
+            let stepIdx = 0;
+            const loadingInterval = setInterval(() => {
+                if (stepIdx < steps.length) {
+                    statusText.innerText = steps[stepIdx];
+                    fillBar.style.width = `${((stepIdx + 1) / steps.length) * 100}%`;
+                    stepIdx++;
+                } else {
+                    clearInterval(loadingInterval);
+                    // Generate Milestones Data
+                    currentMilestones = generateHeuristicSimulation(criterion, totalYears);
+                    displayResults(criterion);
+                }
+            }, 400);
+        }
+
+        function displayResults(criterion) {
+            // Restore UI Visibility
+            document.getElementById('section-loading').classList.add('hidden');
+            document.getElementById('section-form').classList.remove('opacity-40', 'pointer-events-none');
+            document.getElementById('section-results').classList.remove('hidden');
+
+            document.getElementById('active-prompt-title').innerText = `"${criterion}"`;
+
+            // Render Timeline Navigation Dots
+            renderTimelineDots();
+
+            // Set Step 0
+            currentStepIndex = 0;
+            renderMilestoneCard(currentStepIndex);
+
+            // Scroll smoothly to results
+            document.getElementById('section-results').scrollIntoView({ behavior: 'smooth' });
+            lucide.createIcons();
+        }
+
+        function renderTimelineDots() {
+            const container = document.getElementById('timeline-dots-container');
+            container.innerHTML = '';
+
+            currentMilestones.forEach((m, idx) => {
+                const btn = document.createElement('button');
+                btn.onclick = () => jumpToStep(idx);
+                btn.className = `flex flex-col items-center group relative z-10 transition`;
+                btn.innerHTML = `
+                    <span class="text-[10px] font-mono mb-1 ${idx === currentStepIndex ? 'text-cyber-cyan font-bold' : 'text-slate-500'}">AÑO ${m.year}</span>
+                    <div class="w-5 h-5 rounded-full border-2 ${idx === currentStepIndex ? 'bg-cyber-cyan border-white shadow-lg shadow-cyber-cyan' : 'bg-slate-900 border-slate-700 hover:border-cyber-cyan'} transition"></div>
+                `;
+                container.appendChild(btn);
+            });
+        }
+
+        function renderMilestoneCard(index) {
+            playSound('beep');
+            currentStepIndex = index;
+
+            const m = currentMilestones[index];
+
+            document.getElementById('card-year-badge').innerText = `AÑO ${m.year}`;
+            document.getElementById('card-timeline-status').innerText = `HITO ${index + 1} DE ${currentMilestones.length}`;
+            document.getElementById('card-event-title').innerText = m.title;
+            document.getElementById('card-description').innerText = m.description;
+
+            // Render Highlights
+            const hlContainer = document.getElementById('card-highlights');
+            hlContainer.innerHTML = '';
+            m.highlights.forEach(hl => {
+                const li = document.createElement('li');
+                li.innerText = hl;
+                hlContainer.appendChild(li);
+            });
+
+            // Update Progress Gauges
+            document.getElementById('val-social').innerText = `${m.social}%`;
+            document.getElementById('bar-social').style.width = `${m.social}%`;
+
+            document.getElementById('val-economy').innerText = `${m.economy}%`;
+            document.getElementById('bar-economy').style.width = `${m.economy}%`;
+
+            document.getElementById('val-risk').innerText = `${m.risk}%`;
+            document.getElementById('bar-risk').style.width = `${m.risk}%`;
+
+            // Stability Badge
+            const stabBadge = document.getElementById('card-stability-badge');
+            stabBadge.innerText = `${m.stability}% (${m.stability > 60 ? 'ESTABLE' : 'ALERTA DE INESTABILIDAD'})`;
+            stabBadge.className = `text-xs font-mono font-bold ${m.stability > 60 ? 'text-cyber-emerald' : 'text-cyber-rose'}`;
+
+            // Refresh Timeline Dots UI
+            renderTimelineDots();
+        }
+
+        // Playback Control Functions
+        function toggleAutoplay() {
+            if (isPlaying) {
+                pauseAutoplay();
+            } else {
+                startAutoplay();
+            }
+        }
+
+        function startAutoplay() {
+            isPlaying = true;
+            document.getElementById('icon-play').setAttribute('data-lucide', 'pause');
+            document.getElementById('text-play').innerText = "PAUSAR";
+            lucide.createIcons();
+
+            playInterval = setInterval(() => {
+                if (currentStepIndex < currentMilestones.length - 1) {
+                    renderMilestoneCard(currentStepIndex + 1);
+                } else {
+                    pauseAutoplay(); // Loop finished
+                }
+            }, playSpeed);
+        }
+
+        function pauseAutoplay() {
+            isPlaying = false;
+            clearInterval(playInterval);
+            document.getElementById('icon-play').setAttribute('data-lucide', 'play');
+            document.getElementById('text-play').innerText = "REPRODUCIR";
+            lucide.createIcons();
+        }
+
+        function nextStep() {
+            pauseAutoplay();
+            if (currentStepIndex < currentMilestones.length - 1) {
+                renderMilestoneCard(currentStepIndex + 1);
+            }
+        }
+
+        function prevStep() {
+            pauseAutoplay();
+            if (currentStepIndex > 0) {
+                renderMilestoneCard(currentStepIndex - 1);
+            }
+        }
+
+        function jumpToStep(idx) {
+            pauseAutoplay();
+            renderMilestoneCard(idx);
+        }
+
+        function changeSpeed(val) {
+            playSpeed = parseInt(val);
+            if (isPlaying) {
+                pauseAutoplay();
+                startAutoplay();
+            }
+        }
+
+        function resetSimulation() {
+            pauseAutoplay();
+            playSound('beep');
+            document.getElementById('section-results').classList.add('hidden');
+            document.getElementById('section-form').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        // Initialize Lucide Icons on DOM load
+        window.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+        });
+    </script>
+</body>
+</html>
